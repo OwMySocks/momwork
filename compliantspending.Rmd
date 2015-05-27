@@ -3,7 +3,31 @@ title: "Non Compliance Variation"
 output: html_document
 ---
 
-```{r}
-#read in file
+```{r,message=FALSE,warning=FALSE}
+#libraries
+require(plyr)
+require(dplyr)
+require(reshape2)
+require(ggplot2)
 
+#read in file and format the way I like
+data <- read.csv("compliantspending.csv")
+data <- tbl_df(data.frame(data))
+data <- melt(data)
+names(data) <- c("type","percent")
+#some basic stats
+dataStats <- data %>% group_by(type) %>% summarise_each(funs(mean,sd))
+#lets look at the distributions
+qplot(percent,data=data,binwidth=.04,facets=.~type)
+
+```
+What we're looking at this for is to see if we can assume normality (if they fall in a bell curve). We don't really have enough data points to make this distinction well, to be honest, but this is as good as we're going to get. The first two, BPS and Logistics, look like we can make that assumption without a huge caveat, though Real Estate spending certainly doesn't seem like it. 
+
+There are other distributions I could use for it, but I'd need to look up what they are and how to use them. I'll use the distribution I'm familiar with for the moment and if in the next few days I come across it I'll adjust it.
+
+```{r}
+#5% using t distribution
+dataStats <- dataStats %>% mutate(fivepercent=mean+(sd*qt(.95,11)))
+#10%
+dataStats <- dataStats %>% mutate(tenpercent=mean+(sd*qt(.90,11)))
 ```
