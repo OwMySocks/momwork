@@ -1,9 +1,13 @@
 ---
 title: "Non Compliance Variation"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
+#Non Compliant Spending Variation
+The main question we want to have answered here is "How will we know when there's been real improvement?" Since that is fairly open ended, there's a couple things we can look at to give us an idea.
 
-```{r,message=FALSE,warning=FALSE}
+```{r,echo=FALSE,message=FALSE}
 #libraries
 require(plyr)
 require(dplyr)
@@ -19,31 +23,33 @@ data <- melt(data)
 names(data) <- c("type","percent")
 #some basic stats
 dataStats <- data %>% group_by(type) %>% summarise_each(funs(mean,sd))
-#lets look at the distributions
-qplot(percent,data=data,binwidth=.04,facets=.~type)
-
-```
-
-What we're looking at this for is to see if we can assume normality (if they fall in a bell curve). We don't really have enough data points to make this distinction well, to be honest, but this is as good as we're going to get. The first two, BPS and Logistics, look like we can make that assumption without a huge caveat, though Real Estate/Facility spending certainly doesn't seem like it. 
-
-There are other distributions I could use for it, but I'd need to look up what they are and how to use them. I'll use the distribution I'm familiar with for the moment and if in the next few days I come across it I'll adjust it.
-
-The values below are just quantiles- 95, 90% of values that you would get in this system (i.e, if nothing actually changes) are going to be higher than the values in the five and ten percent columns below. These are mostly just decent indicators of change, but not guarantees.
-
-I assumed that in this case, lower is better. 
-
-```{r}
 #5% using t distribution
 dataStats <- dataStats %>% mutate(fivepercent=mean-(sd*qt(.95,11)))
 #10%
 dataStats <- dataStats %>% mutate(tenpercent=mean-(sd*qt(.90,11)))
 ```
 
+##The Quick and Dirty Approach
+The simplest approach is to look at the current distribution of percent non-compliance and find what would be considered an "outlier". Given that we're looking at think in a fairly broad manner, instead of true outliers, we might consider relatively unlikely values to be "real change". We might consider a value at a 95th or even 90th percentile to be enough of a change. 
+
+This method assumes that not only are the measurements independent from month to month but that they are approximately normally distributed. 
+
+If these are roughlly normally distrubted, we can approximate that with a T-distribution and find the lower tail of a desired percentile. In the table below, for each type of non-compliant spending, I have reported the point where 5 and 10% of values are expected to fall below. 
+
 Type | Mean | Standard Deviation | Five Percent | Ten Percent
 -----|------|--------------------|--------------|------------
 `r dataStats$type[1]`|`r dataStats$mean[1]`|`r dataStats$sd[1]`|`r dataStats$fivepercent[1]`|`r dataStats$tenpercent[1]`
 `r dataStats$type[2]`|`r dataStats$mean[2]`|`r dataStats$sd[2]`|`r dataStats$fivepercent[2]`|`r dataStats$tenpercent[2]`
 `r dataStats$type[3]`|`r dataStats$mean[3]`|`r dataStats$sd[3]`|`r dataStats$fivepercent[3]`|`r dataStats$tenpercent[3]`
+
+As for assuming normality, while we only have 12 data points to work with, I think we can get away with that assumption without too much of an issue. A Shapiro-Wilk test of normality resulted in fairly large p-values for each set, which at least means that we haven't ruled out that the data is from a normal distribution. We can also look at histograms to get a sense of it-
+```{r,warning=FALSE,message=FALSE,echo=FALSE}
+qplot(percent,data=data,binwidth=.03,facets=.~type)
+```
+
+
+##Slightly More Complex Approach
+
 
 Another (possibly better) approach would be to take a rolling 3 month mean (which we can assume is normally distributed because of the Central Limit Theorem) and then continue to find the 3 month mean to compare. This would be a good way to start a control chart as well.
 
@@ -70,17 +76,22 @@ qccFac<-qcc(rollFac,type="xbar",center=cenFac,add.stats=TRUE,title="Facilities N
 
 I have these centered at the current mean of all the 3 month means. the UCL and LCL lines signify 3 standard deviations away from that mean. Should the next 3 month mean be outside of those lines, something **definitely** changed. However, that does not rule out any substantive change, as rolling means are purposefully change-resistant, and 3 standard deviations might be more than you really need. If you kept these continually for a while, you might be able to see a mean changing. Indeed, for con compliant facility spending, this seems to have happened- there is a distinct upward trend in the 3 month rolling average. 
 
-Also, its pretty clear that there's a definite upward trend in non-compliant facility trend. 
-
-We can make these charts without using the rolling mean for the ones that are normally distributed, however. 
+To track change, you would want to continue to compute the 3 month average
 
 
-```{r,message=FALSE}
+We can make these charts without using the rolling mean as well, which might be a nice way of looking at things. 
+
+
+```{r,message=FALSE,echo=FALSE}
 qccBPSStraight<- qcc(data[data$type=="BPS",2],type="xbar.one",center=mean(data[data$type=="BPS",2]),add.stats=TRUE,title="BPS Non-Compliant Spending",std.dev=sd(data[data$type=="BPS",2]))
 ```
 
-```{r,message=FALSE}
-qccLogStraight <- qcc(data[data$type=="BPS",2],type="xbar.one",center=mean(data[data$type=="BPS",2]),add.stats=TRUE,title="Logistics Non-Compliant Spending",std.dev=sd(data[data$type=="BPS",2]))
+```{r,message=FALSE,echo=FALSE}
+qccLogStraight <- qcc(data[data$type=="Logistics",2],type="xbar.one",center=mean(data[data$type=="Logistics",2]),add.stats=TRUE,title="Logistics Non-Compliant Spending",std.dev=sd(data[data$type=="Logistics",2]))
+```
+
+```{r,message=FALSE,echo=FALSE}
+qccLogStraight <- qcc(data[data$type=="Real.Estate.and.Facilities",2],type="xbar.one",center=mean(data[data$type=="Real.Estate.and.Facilities",2]),add.stats=TRUE,title="Facilities Non-Compliant Spending",std.dev=sd(data[data$type=="Real.Estate.and.Facilities",2]))
 ```
 
 There's more I could look into. Actually I'm pretty sure I know the best way of doing this, but I'd need to find a piece of paper and work through it a bit to see if it's actually any different than what I've already shown you.
