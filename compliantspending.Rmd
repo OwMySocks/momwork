@@ -8,6 +8,8 @@ output: html_document
 require(plyr)
 require(dplyr)
 require(reshape2)
+require(zoo)
+require(qcc)
 require(ggplot2)
 
 #read in file and format the way I like
@@ -21,13 +23,64 @@ dataStats <- data %>% group_by(type) %>% summarise_each(funs(mean,sd))
 qplot(percent,data=data,binwidth=.04,facets=.~type)
 
 ```
-What we're looking at this for is to see if we can assume normality (if they fall in a bell curve). We don't really have enough data points to make this distinction well, to be honest, but this is as good as we're going to get. The first two, BPS and Logistics, look like we can make that assumption without a huge caveat, though Real Estate spending certainly doesn't seem like it. 
+
+What we're looking at this for is to see if we can assume normality (if they fall in a bell curve). We don't really have enough data points to make this distinction well, to be honest, but this is as good as we're going to get. The first two, BPS and Logistics, look like we can make that assumption without a huge caveat, though Real Estate/Facility spending certainly doesn't seem like it. 
 
 There are other distributions I could use for it, but I'd need to look up what they are and how to use them. I'll use the distribution I'm familiar with for the moment and if in the next few days I come across it I'll adjust it.
 
+The values below are just quantiles- 95, 90% of values that you would get in this system (i.e, if nothing actually changes) are going to be higher than the values in the five and ten percent columns below. These are mostly just decent indicators of change, but not guarantees.
+
+I assumed that in this case, lower is better. 
+
 ```{r}
 #5% using t distribution
-dataStats <- dataStats %>% mutate(fivepercent=mean+(sd*qt(.95,11)))
+dataStats <- dataStats %>% mutate(fivepercent=mean-(sd*qt(.95,11)))
 #10%
-dataStats <- dataStats %>% mutate(tenpercent=mean+(sd*qt(.90,11)))
+dataStats <- dataStats %>% mutate(tenpercent=mean-(sd*qt(.90,11)))
 ```
+
+Type | Mean | Standard Deviation | Five Percent | Ten Percent
+-----|------|--------------------|--------------|------------
+`r dataStats$type[1]`|`r dataStats$mean[1]`|`r dataStats$sd[1]`|`r dataStats$fivepercent[1]`|`r dataStats$tenpercent[1]`
+`r dataStats$type[2]`|`r dataStats$mean[2]`|`r dataStats$sd[2]`|`r dataStats$fivepercent[2]`|`r dataStats$tenpercent[2]`
+`r dataStats$type[3]`|`r dataStats$mean[3]`|`r dataStats$sd[3]`|`r dataStats$fivepercent[3]`|`r dataStats$tenpercent[3]`
+
+Another (possibly better) approach would be to take a rolling 3 month mean (which we can assume is normally distributed because of the Central Limit Theorem) and then continue to find the 3 month mean to compare. This would be a good way to start a control chart as well.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+#get rolling means
+rollBPS <- rollmean(data[data$type=="BPS",2],3)
+rollLog <- rollmean(data[data$type=="Logistics",2],3)
+rollFac <- rollmean(data[data$type=="Real.Estate.and.Facilities",2],3)
+#get centers of control charts aka the means
+cenBPS <- mean(rollBPS)
+cenLog <- mean(rollLog)
+cenFac <- mean(rollFac)
+#simple control charts
+qccBPS<-qcc(rollBPS,type="xbar.one",center=cenBPS,add.stats=TRUE,title="BPS Non-Compliant Spending 3 Month Rolling Mean",std.dev=sd(rollBPS))
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+qccLog<-qcc(rollLog,type="xbar.one",center=cenLog,add.stats=TRUE,title="Logistics Non Compliant Spending 3 Month Rolling Mean",std.dev=sd(rollLog))
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+qccFac<-qcc(rollFac,type="xbar",center=cenFac,add.stats=TRUE,title="Facilities Non Compliant Spending 3 Month Rolling Mean",std.dev=sd(rollFac))
+```
+
+I have these centered at the current mean of all the 3 month means. the UCL and LCL lines signify 3 standard deviations away from that mean. Should the next 3 month mean be outside of those lines, something **definitely** changed. However, that does not rule out any substantive change, as rolling means are purposefully change-resistant, and 3 standard deviations might be more than you really need. If you kept these continually for a while, you might be able to see a mean changing. Indeed, for con compliant facility spending, this seems to have happened- there is a distinct upward trend in the 3 month rolling average. 
+
+Also, its pretty clear that there's a definite upward trend in non-compliant facility trend. 
+
+We can make these charts without using the rolling mean for the ones that are normally distributed, however. 
+
+
+```{r,message=FALSE}
+qccBPSStraight<- qcc(data[data$type=="BPS",2],type="xbar.one",center=mean(data[data$type=="BPS",2]),add.stats=TRUE,title="BPS Non-Compliant Spending",std.dev=sd(data[data$type=="BPS",2]))
+```
+
+```{r,message=FALSE}
+qccLogStraight <- qcc(data[data$type=="BPS",2],type="xbar.one",center=mean(data[data$type=="BPS",2]),add.stats=TRUE,title="Logistics Non-Compliant Spending",std.dev=sd(data[data$type=="BPS",2]))
+```
+
+There's more I could look into. Actually I'm pretty sure I know the best way of doing this, but I'd need to find a piece of paper and work through it a bit to see if it's actually any different than what I've already shown you.
